@@ -1,0 +1,86 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tonos 🎵 Mensajes en música</title>
+<style>
+body{font-family:system-ui,sans-serif;background:linear-gradient(#ffe4f1,#fff);margin:0;color:#5a2a48}
+main{max-width:640px;margin:auto;padding:16px}h1{text-align:center;color:#d6338a}
+.card{background:#fff;border-radius:18px;padding:14px;margin:12px 0;box-shadow:0 4px 14px #f5a3c955}
+textarea{width:100%;box-sizing:border-box;font-size:18px;border:2px solid #f7b6d6;border-radius:12px;padding:10px}
+button{background:#e64c9c;color:#fff;border:0;border-radius:24px;padding:12px 18px;font-size:17px;margin:6px 4px 0 0}
+button.alt{background:#a66cd6}select,input{font-size:16px}
+#bars{display:flex;align-items:flex-end;gap:2px;height:140px;overflow-x:auto;padding:4px;background:#fff6fb;border-radius:12px}
+.bar{min-width:12px;border-radius:6px 6px 0 0;opacity:.55;position:relative;transition:.1s}
+.bar span{position:absolute;bottom:-18px;left:0;right:0;text-align:center;font-size:11px}
+.bar.on{opacity:1;transform:scaleY(1.08);box-shadow:0 0 10px #e64c9c}
+.sp{min-width:10px}#out{font-size:22px;font-weight:bold;color:#d6338a;min-height:28px}
+table{border-collapse:collapse;font-size:13px;width:100%}td{border:1px solid #f7d0e4;padding:3px;text-align:center}
+</style></head><body><main>
+<h1>🎵 Tonos</h1><p style="text-align:center">Escribe un mensaje y conviértelo en música secreta. Cada letra tiene su propia nota.</p>
+<div class="card"><textarea id="txt" rows="2">hola, ¿cómo estás?</textarea>
+<p>Velocidad: <input type="range" id="vel" min="1" max="5" value="3"> &nbsp; Sonido:
+<select id="snd"><option value="sine">Suave</option><option value="square">Retro</option><option value="bell">Campana</option></select></p>
+<button id="play">▶ Convertir a tonos</button><button class="alt" id="dl">⬇ Descargar audio (.wav)</button>
+<div id="bars" style="margin-top:12px;padding-bottom:22px"></div></div>
+<div class="card"><h3>👂 Escuchar y traducir</h3>
+<p>Sube un audio hecho con esta app:</p><input type="file" id="file" accept="audio/*,.wav">
+<p><button class="alt" id="mic">🎤 Escuchar con el micrófono</button></p>
+<div>Mensaje: <div id="out"></div></div></div>
+<div class="card"><h3>🎹 Tabla de notas</h3><table id="leg"></table><p>El espacio es un silencio largo.</p></div>
+</main><script>
+//CORE-START
+var CHARS="abcdefghijklmnñopqrstuvwxyzáéíóúü0123456789¿?¡!,.";
+function freqOf(i){return 400*Math.pow(2,i/12);}
+function slots(text){var r=[];for(var c of text.toLowerCase()){if(c===" "||c==="\n")r.push(null);else{var i=CHARS.indexOf(c);if(i>=0)r.push(i);}}return r;}
+function durs(v){var T=0.26-0.04*v;return{T:T,g:T*0.35,s:T*1.6};}
+function render(text,v,snd,sr){var d=durs(v),sl=slots(text),t=0.2,ev=[];
+ for(var x of sl){if(x===null){t+=d.s;ev.push({sp:1,t:t});continue;}ev.push({i:x,t:t});t+=d.T+d.g;}
+ var n=Math.ceil((t+0.3)*sr),b=new Float32Array(n);
+ for(var e of ev){if(e.sp)continue;var f=freqOf(e.i),s0=Math.floor(e.t*sr),L=Math.floor(d.T*sr);
+  for(var k=0;k<L;k++){var tt=k/sr,ph=2*Math.PI*f*tt,y;
+   if(snd==="square")y=(Math.sin(ph)>=0?1:-1)*0.35;
+   else if(snd==="bell")y=(Math.sin(ph)+0.25*Math.sin(2.76*ph))*Math.max(0.25,Math.exp(-tt*6))*0.6;
+   else y=Math.sin(ph)*0.6;
+   var a=Math.min(1,k/(0.01*sr),(L-k)/(0.01*sr));b[s0+k]=y*a;}}
+ return{buf:b,ev:ev,d:d};}
+function toWav(b,sr){var n=b.length,ab=new ArrayBuffer(44+n*2),v=new DataView(ab),p=0;
+ function s(x){for(var c of x)v.setUint8(p++,c.charCodeAt(0));}function u32(x){v.setUint32(p,x,true);p+=4;}function u16(x){v.setUint16(p,x,true);p+=2;}
+ s("RIFF");u32(36+n*2);s("WAVEfmt ");u32(16);u16(1);u16(1);u32(sr);u32(sr*2);u16(2);u16(16);s("data");u32(n*2);
+ for(var i=0;i<n;i++){v.setInt16(p,Math.max(-1,Math.min(1,b[i]))*32767,true);p+=2;}return ab;}
+function parseWav(ab){var v=new DataView(ab),p=12,sr=44100,ch=1,bits=16;
+ while(p<v.byteLength-8){var id=String.fromCharCode(v.getUint8(p),v.getUint8(p+1),v.getUint8(p+2),v.getUint8(p+3)),sz=v.getUint32(p+4,true);
+  if(id==="fmt "){ch=v.getUint16(p+10,true);sr=v.getUint32(p+12,true);bits=v.getUint16(p+22,true);}
+  if(id==="data"){var n=Math.floor(sz/(bits/8)/ch),b=new Float32Array(n);for(var i=0;i<n;i++){var o=p+8+i*ch*bits/8;b[i]=bits===16?v.getInt16(o,true)/32768:(v.getUint8(o)-128)/128;}return{buf:b,sr:sr};}
+  p+=8+sz+(sz%2);}throw"wav";}
+function goertzel(b,s,e,f,sr){var w=2*Math.PI*f/sr,c=2*Math.cos(w),a=0,z=0;for(var i=s;i<e;i++){var y=b[i]+c*a-z;z=a;a=y;}return a*a+z*z-c*a*z;}
+function decode(b,sr){var fr=Math.floor(sr*0.005),en=[],mx=0;
+ for(var i=0;i+fr<=b.length;i+=fr){var m=0;for(var k=i;k<i+fr;k++)m=Math.max(m,Math.abs(b[k]));en.push(m);mx=Math.max(mx,m);}
+ var th=mx*0.08,seg=[],st=-1;
+ for(var j=0;j<=en.length;j++){var on=j<en.length&&en[j]>th;if(on&&st<0)st=j;if(!on&&st>=0){if(j-st>=4)seg.push([st,j]);st=-1;}}
+ if(!seg.length)return"";var L=seg.map(x=>x[1]-x[0]).sort((a,b)=>a-b),T=L[L.length>>1],out="";
+ seg.forEach(function(g,n){if(n>0){var gap=seg[n][0]-seg[n-1][1];if(gap>T*1.1)out+=" ";}
+  var s=g[0]*fr,e=g[1]*fr,mg=Math.floor((e-s)*0.15),best=0,bi=0;
+  for(var i=0;i<CHARS.length;i++){var p=goertzel(b,s+mg,e-mg,freqOf(i),sr);if(p>best){best=p;bi=i;}}out+=CHARS[bi];});
+ return out;}
+//CORE-END
+var $=id=>document.getElementById(id),ctx,colors=i=>"hsl("+(330-i*5)+",80%,62%)";
+function drawBars(sl){$("bars").innerHTML="";sl.forEach(function(x,n){var d=document.createElement("div");
+ if(x===null){d.className="sp";}else{d.className="bar";d.style.height=(20+x*2.2)+"px";d.style.background=colors(x);d.innerHTML="<span>"+CHARS[x]+"</span>";}
+ $("bars").appendChild(d);});}
+function cur(){return render($("txt").value,+$("vel").value,$("snd").value,44100);}
+$("play").onclick=function(){ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();var r=cur();drawBars(slots($("txt").value));
+ var ab=ctx.createBuffer(1,r.buf.length,44100);ab.copyToChannel?ab.copyToChannel(r.buf,0):ab.getChannelData(0).set(r.buf);
+ var s=ctx.createBufferSource();s.buffer=ab;s.connect(ctx.destination);s.start();var t0=performance.now(),els=$("bars").children;
+ r.ev.forEach(function(e,n){if(e.sp)return;setTimeout(()=>els[n].classList.add("on"),e.t*1000);setTimeout(()=>els[n].classList.remove("on"),(e.t+r.d.T)*1000);});};
+$("dl").onclick=function(){var r=cur(),bl=new Blob([toWav(r.buf,44100)],{type:"audio/wav"}),a=document.createElement("a");a.href=URL.createObjectURL(bl);a.download="mensaje_tonos.wav";a.click();};
+$("file").onchange=async function(){var f=this.files[0];if(!f)return;var ab=await f.arrayBuffer(),b,sr;
+ try{var w=parseWav(ab);b=w.buf;sr=w.sr;}catch(e){ctx=ctx||new AudioContext();var d=await ctx.decodeAudioData(ab);b=d.getChannelData(0);sr=d.sampleRate;}
+ $("out").textContent=decode(b,sr)||"(no encontré tonos 😢)";};
+var rec=null;$("mic").onclick=async function(){if(rec){rec.stop();return;}
+ try{var st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}catch(e){alert("No pude usar el micrófono");return;}
+ ctx=ctx||new AudioContext();var src=ctx.createMediaStreamSource(st),pr=ctx.createScriptProcessor(4096,1,1),parts=[];
+ pr.onaudioprocess=e=>parts.push(new Float32Array(e.inputBuffer.getChannelData(0)));src.connect(pr);pr.connect(ctx.destination);
+ this.textContent="⏹ Parar y traducir";var me=this;
+ rec={stop:function(){pr.disconnect();src.disconnect();st.getTracks().forEach(t=>t.stop());var n=0;parts.forEach(p=>n+=p.length);var b=new Float32Array(n),o=0;parts.forEach(p=>{b.set(p,o);o+=p.length;});
+  $("out").textContent=decode(b,ctx.sampleRate)||"(no escuché tonos 😢)";me.textContent="🎤 Escuchar con el micrófono";rec=null;}};};
+var h="";for(var i=0;i<CHARS.length;i++){if(i%6==0)h+="<tr>";h+="<td style='background:"+colors(i)+"33'><b>"+CHARS[i]+"</b> "+Math.round(freqOf(i))+" Hz</td>";if(i%6==5)h+="</tr>";}$("leg").innerHTML=h;
+drawBars(slots($("txt").value));
+</script></body></html>
